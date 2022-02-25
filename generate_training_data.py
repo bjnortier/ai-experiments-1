@@ -6,7 +6,7 @@ import carb
 from pathlib import Path
 import random
 from omni.isaac.kit import SimulationApp
-from omni.isaac.shapenet.utils import LABEL_TO_SYNSET
+
 
 random.seed(335899)
 
@@ -21,6 +21,7 @@ def find_usd_assets(shapenet_dir, categories, max_asset_size=50):
     assets up to split * len(num_assets) if `train=True`, otherwise select the
     remainder.
     """
+    from omni.isaac.shapenet.utils import LABEL_TO_SYNSET
 
     references = {}
     for category in categories:
@@ -56,10 +57,20 @@ class TrainingDataGenerator(object):
 
         from omni.isaac.core import World
         import omni.isaac.dr as dr
-        
+        from omni.kit.viewport import get_default_viewport_window
+        from omni.isaac.synthetic_utils import SyntheticDataHelper
+
         self.world = World(stage_units_in_meters=0.01)
         self.create_environment()
 
+        # Set up
+        self.viewport = get_default_viewport_window()
+        self.viewport.set_active_camera("/World/CameraRig/Camera")
+        self.viewport.set_texture_resolution(1024, 1024)
+        self.sd_helper = SyntheticDataHelper()
+        self.sd_helper.initialize(sensor_names=["rgb"], viewport=self.viewport)
+
+        # Required for manual DR commands
         dr.commands.ToggleManualModeCommand().do()
 
         shapenet_dir = Path(os.environ["SHAPENET_LOCAL_DIR"])
@@ -138,10 +149,10 @@ class TrainingDataGenerator(object):
 
         asset_reference = random.choice(self.asset_references[category])
 
+        # Create the shape
         create_prim("/World/Shape", "Xform")
-        create_prim("/World/Shape/rig", "Xform")
         prim = create_prim(
-            "/World/Shape/rig/Cube",
+            "/World/Shape/Mesh",
             "Xform",
             scale=np.array([20.0, 20.0, 20.0]),
             orientation=euler_angles_to_quat(
@@ -150,31 +161,33 @@ class TrainingDataGenerator(object):
             usd_path=asset_reference,
             semantic_label=category)
 
-        primX = XFormPrim("/World/Shape/rig/Cube")
+        # Determine bounds and translate to sit on the Z=0 plane
+        primX = XFormPrim("/World/Shape/Mesh")
         orientation_on_plane = euler_angles_to_quat(
             np.array([90.0, 0.0, 0.0]),
             degrees=True)
         primX.set_local_pose(
             np.array([0.0, 0.0, 0.0]),
             orientation_on_plane)
-        # Determine bounds and translate to sit on the Z=0 plane
         bounds = UsdGeom.Mesh(prim).ComputeWorldBound(0.0, "default")
         new_position = np.array([0.0, 0.0, -bounds.GetBox().GetMin()[2]])
         primX.set_local_pose(new_position)
 
+        # Create a material and apply it to the shape
         material = PreviewSurface(
-            prim_path="/World/Looks/shape_material",
+            prim_path="/World/Looks/ShapeMaterial",
             color=np.array([0.2, 0.7, 0.2]))
         primX.apply_visual_material(material)
 
+        # Rotation and translation DR commands
         dr.commands.CreateMovementComponentCommand(
-            prim_paths=["/World/Shape/rig"],
+            prim_paths=["/World/Shape"],
             min_range=(-5.0, -5.0, 0.0),
             max_range=(5.0, 5.0, 0.0),
             seed=dr_seed()
         ).do()
         dr.commands.CreateRotationComponentCommand(
-            prim_paths=["/World/Shape/rig"],
+            prim_paths=["/World/Shape"],
             min_range=(0.0, 0.0, 0.0),
             max_range=(0.0, 0.0, 360.0),
             seed=dr_seed()
@@ -185,25 +198,19 @@ class TrainingDataGenerator(object):
         delete_prim("/World/Shape")
 
     def capture_rgb_groundtruth(self, filename):
+        """
+        Randomize once and capture the ground truth image
+        """
         import omni.isaac.dr as dr
-        from omni.kit.viewport import get_default_viewport_window
-        from omni.isaac.synthetic_utils import SyntheticDataHelper
-
-        viewport = get_default_viewport_window()
-        viewport.set_active_camera("/World/CameraRig/Camera")
-        viewport.set_texture_resolution(1024, 1024)
-        sd_helper = SyntheticDataHelper()
-
-        sd_helper.initialize(sensor_names=["rgb"], viewport=viewport)
-
+        
         dr.commands.RandomizeOnceCommand().do()
         generator.world.step()
         generator.world.step()
         generator.world.step()
-
-        ground_truth = sd_helper.get_groundtruth(
+        ground_truth = self.sd_helper.get_groundtruth(
             ["rgb"],
-            viewport, verify_sensor_init=True
+            self.viewport,
+            verify_sensor_init=True
         )
         image = Image.fromarray(ground_truth["rgb"])
         image.save(filename)
@@ -213,15 +220,21 @@ class TrainingDataGenerator(object):
 
 
 if __name__ == "__main__":
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+
     categories = [
         "watercraft", "plane", "car", "bus", "rocket"
     ]
     generator = TrainingDataGenerator(categories)
 
-    for category in [categories[2]]:
-        generator.load_random_shape(category)
-        for i in range(9):
-            generator.capture_rgb_groundtruth(f"/home/bjnortier/isaac/sorting/training_data/rgb_{category}_{i}.png")
-        generator.clear_shape()
+    sample = 0
+    for j in range(1000):
+        print(f"{j+1}/1000")
+        for category in categories:
+            generator.load_random_shape(category)
+            for i in range(24):
+                generator.capture_rgb_groundtruth(f"{dir_path}/training_data/rgb_{category}_{sample}.png")
+                sample += 1
+            generator.clear_shape()
 
     generator.close()
