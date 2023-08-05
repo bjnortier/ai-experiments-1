@@ -1,7 +1,7 @@
 ### AI conveyor belt in NVIDIA Isaac Sim (Ben Nortier):
--  🔗 https://www.bjnortier.com/2022/02/09/AI-Picker-Pt1.html
--  🔗 https://www.bjnortier.com/2022/02/23/Conveyor-Synthetic-Data.html
--  🔗 https://www.bjnortier.com/2022/03/08/AI-Conveyor-Pt3.html
+-  🔗 [An AI conveyor belt in NVIDIA Isaac Sim - Part 1 (Conveyor physics)](https://www.bjnortier.com/2022/02/09/AI-Picker-Pt1.html)
+-  🔗 [An AI conveyor belt in NVIDIA Isaac Sim - Part 2 (Synthetic Data Generation)](https://www.bjnortier.com/2022/02/23/Conveyor-Synthetic-Data.html)
+-  🔗 [An AI conveyor belt in NVIDIA Isaac Sim - Part 3 (Final)](https://www.bjnortier.com/2022/03/08/AI-Conveyor-Pt3.html)
 -  🔗 https://github.com/bjnortier/ai-experiments-1
 ***
 ### First Steps:
